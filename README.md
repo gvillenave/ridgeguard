@@ -43,7 +43,7 @@ sudo ridgeguard
 
 ```bash
 git clone https://github.com/cedarcipher/ridgeguard.git
-cd ridgeguard
+cd ridgeguard/src
 sudo bash setup.sh
 ```
 
