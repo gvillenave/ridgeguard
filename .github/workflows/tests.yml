@@ -1,0 +1,71 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+    paths: ['src/**']
+  pull_request:
+    branches: [main]
+    paths: ['src/**']
+  workflow_call:
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run ShellCheck
+        run: bash src/tests/shellcheck.sh
+
+  bats:
+    name: BATS Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install BATS
+        run: sudo apt-get install -y bats
+      - name: Run BATS tests
+        run: bats src/tests/unit/*.bats
+
+  integration:
+    name: Docker Integration Tests
+    runs-on: ubuntu-latest
+    needs: [shellcheck, bats]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build test image
+        run: docker build -t ridgeguard-test -f src/tests/integration/Dockerfile src/
+      - name: Run integration tests
+        run: docker run --rm ridgeguard-test
+
+  pentest:
+    name: Penetration Tests
+    runs-on: ubuntu-latest
+    needs: [shellcheck, bats]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run penetration tests
+        working-directory: src/tests/pentest
+        run: |
+          docker compose up --build --abort-on-container-exit --exit-code-from attacker 2>&1 | tee /tmp/pentest-output.log
+      - name: Post failure logs to PR
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Extract the last 150 lines (test results) from the log
+          LOGS="$(tail -150 /tmp/pentest-output.log)"
+          gh pr comment "${{ github.event.pull_request.number }}" --body "$(cat <<EOF
+          <details><summary>Penetration Test Failure Logs</summary>
+
+          \`\`\`
+          ${LOGS}
+          \`\`\`
+          </details>
+          EOF
+          )"
+      - name: Cleanup
+        if: always()
+        working-directory: src/tests/pentest
+        run: docker compose down -v

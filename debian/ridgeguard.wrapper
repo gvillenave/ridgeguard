@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Wrapper script to run ridgeguard from the installed location
+exec bash /usr/share/ridgeguard/setup.sh "$@"

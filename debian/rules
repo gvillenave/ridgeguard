@@ -1,0 +1,14 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_install:
+	install -d $(CURDIR)/debian/ridgeguard/usr/share/ridgeguard
+	install -d $(CURDIR)/debian/ridgeguard/usr/share/ridgeguard/lib
+	install -d $(CURDIR)/debian/ridgeguard/usr/share/ridgeguard/modules
+	install -d $(CURDIR)/debian/ridgeguard/usr/bin
+	install -m 0755 src/setup.sh $(CURDIR)/debian/ridgeguard/usr/share/ridgeguard/setup.sh
+	install -m 0644 src/lib/common.sh $(CURDIR)/debian/ridgeguard/usr/share/ridgeguard/lib/common.sh
+	install -m 0755 src/modules/*.sh $(CURDIR)/debian/ridgeguard/usr/share/ridgeguard/modules/
+	install -m 0755 debian/ridgeguard.wrapper $(CURDIR)/debian/ridgeguard/usr/bin/ridgeguard
