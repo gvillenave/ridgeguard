@@ -14,7 +14,7 @@ jobs:
     name: ShellCheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Run ShellCheck
         run: bash src/tests/shellcheck.sh
 
@@ -22,7 +22,7 @@ jobs:
     name: BATS Unit Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install BATS
         run: sudo apt-get install -y bats
       - name: Run BATS tests
@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [shellcheck, bats]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build test image
         run: docker build -t ridgeguard-test -f src/tests/integration/Dockerfile src/
       - name: Run integration tests
@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [shellcheck, bats]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Run penetration tests
         working-directory: src/tests/pentest
         run: |
