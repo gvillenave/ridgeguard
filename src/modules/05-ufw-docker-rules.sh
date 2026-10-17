@@ -9,16 +9,17 @@ require_root
 AFTER_RULES="/etc/ufw/after.rules"
 MARKER="# BEGIN UFW AND DOCKER"
 
-if grep -q "$MARKER" "$AFTER_RULES" 2>/dev/null; then
-    info "UFW Docker rules already present, skipping"
-    exit 0
-fi
+add_docker_chain_rules() {
+    if grep -q "$MARKER" "$AFTER_RULES" 2>/dev/null; then
+        info "UFW Docker rules already present, skipping"
+        return 0
+    fi
 
-info "Adding Docker-compatible UFW rules..."
+    info "Adding Docker-compatible UFW rules..."
 
-backup_file "$AFTER_RULES"
+    backup_file "$AFTER_RULES"
 
-cat >> "$AFTER_RULES" << 'EOF'
+    cat >> "$AFTER_RULES" << 'EOF'
 
 # BEGIN UFW AND DOCKER
 *filter
@@ -48,7 +49,26 @@ COMMIT
 # END UFW AND DOCKER
 EOF
 
-info "Reloading UFW..."
-ufw reload
+    info "Reloading UFW..."
+    ufw reload
+}
+
+add_docker_chain_rules
+
+# Docker publishes ports through DNAT, so the DOCKER-USER chain above drops
+# inbound traffic to containers unless a route rule allows it. Ports 80 and 443
+# are open on the host; open them for published containers too (reverse proxies
+# such as Traefik/Caddy used by Coolify). Rules match the container port.
+if [[ "${DOCKER_MODE:-rootful}" == "rootful" ]]; then
+    route_ports=(80 443)
+    if [[ "${COOLIFY_PREP:-0}" == "1" ]]; then
+        # Coolify dashboard (host 8000 -> container 8080), realtime, terminal
+        route_ports+=(8080 6001 6002)
+    fi
+    for port in "${route_ports[@]}"; do
+        info "UFW: allowing routed traffic to container port ${port}/tcp"
+        ufw route allow proto tcp from any to any port "$port"
+    done
+fi
 
 success "UFW Docker rules applied"

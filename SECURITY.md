@@ -1,5 +1,8 @@
 # Security Review & Threat Model
 
+> **Note (Ubuntu 26.04 update):** Docker now installs in **rootful** mode by default, and Dokploy and lazydocker are optional. The analysis below was written for rootless Docker. Rootful mode loses the rootless isolation benefit (container escape can lead to host root), the same trade-off described for Dokploy. Use `--rootless` for the stronger isolation when you do not need Coolify or Dokploy. A `--coolify` run also opens ports 8000, 6001 and 6002 until a domain is set up.
+
+
 ## Table of Contents
 
 1. [Executive Summary](#executive-summary)

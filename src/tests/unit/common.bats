@@ -165,3 +165,41 @@ setup() {
     # Verify the function has the right logic (since EUID is readonly in bash)
     declare -f require_root | grep -q 'EUID'
 }
+
+# --- check_os ---
+
+@test "check_os accepts Ubuntu 26.04" {
+    printf 'ID=ubuntu\nVERSION_ID="26.04"\n' > "$BATS_TEST_TMPDIR/os-release"
+    run check_os "$BATS_TEST_TMPDIR/os-release"
+    [[ $status -eq 0 ]]
+}
+
+@test "check_os accepts Ubuntu newer than 26.04" {
+    printf 'ID=ubuntu\nVERSION_ID="26.10"\n' > "$BATS_TEST_TMPDIR/os-release"
+    run check_os "$BATS_TEST_TMPDIR/os-release"
+    [[ $status -eq 0 ]]
+}
+
+@test "check_os rejects Ubuntu 24.04" {
+    printf 'ID=ubuntu\nVERSION_ID="24.04"\n' > "$BATS_TEST_TMPDIR/os-release"
+    run check_os "$BATS_TEST_TMPDIR/os-release"
+    [[ $status -ne 0 ]]
+    [[ "$output" == *"Unsupported OS"* ]]
+}
+
+@test "check_os rejects non-Ubuntu distributions" {
+    printf 'ID=debian\nVERSION_ID="13"\n' > "$BATS_TEST_TMPDIR/os-release"
+    run check_os "$BATS_TEST_TMPDIR/os-release"
+    [[ $status -ne 0 ]]
+}
+
+@test "check_os can be overridden with RIDGEGUARD_ALLOW_UNSUPPORTED_OS=1" {
+    printf 'ID=ubuntu\nVERSION_ID="24.04"\n' > "$BATS_TEST_TMPDIR/os-release"
+    RIDGEGUARD_ALLOW_UNSUPPORTED_OS=1 run check_os "$BATS_TEST_TMPDIR/os-release"
+    [[ $status -eq 0 ]]
+}
+
+@test "DOCKER_MODE defaults to rootful" {
+    run bash -c 'unset DOCKER_MODE; source "$1"; echo "$DOCKER_MODE"' -- "$PROJECT_DIR/lib/common.sh"
+    [[ "$output" == "rootful" ]]
+}

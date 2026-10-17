@@ -10,9 +10,9 @@ Rules-Requires-Root: no
 Package: ridgeguard
 Architecture: all
 Depends: ${misc:Depends}, bash (>= 4.0), coreutils, sed, grep
-Recommends: openssh-server, ufw, fail2ban, docker.io
-Description: Automated Ubuntu server hardening and Docker rootless setup
+Recommends: openssh-server, ufw, fail2ban
+Description: Automated Ubuntu server hardening and Docker setup
  A modular toolset for bootstrapping fresh Ubuntu servers with security
- hardening and Docker in rootless mode. Includes SSH hardening, UFW firewall
- configuration, fail2ban, kernel sysctl tuning, unattended upgrades, and
- Docker Engine installation in rootless mode.
+ hardening and Docker (rootful or rootless). Includes SSH hardening, UFW
+ firewall configuration, fail2ban, kernel sysctl tuning, unattended upgrades,
+ and Docker Engine installation. Prepares servers for Coolify.

@@ -8,7 +8,7 @@ require_root
 
 info "Restarting SSH service..."
 
-# Detect the correct service name (ssh on Ubuntu 24.04+, sshd on older)
+# Detect the correct service name (ssh on Ubuntu, sshd on other distributions)
 if systemctl list-unit-files ssh.service &>/dev/null 2>&1; then
     SSH_SERVICE="ssh"
 elif systemctl list-unit-files sshd.service &>/dev/null 2>&1; then

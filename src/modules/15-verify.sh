@@ -99,12 +99,33 @@ else
     echo -e "  $FAIL Docker user not found"
 fi
 
-# Lazydocker
-if command -v lazydocker &>/dev/null; then
-    lzd_ver=$(lazydocker --version 2>/dev/null | grep -oP 'Version:\s*\K[\d.]+' || echo "unknown")
-    echo -e "  $PASS Lazydocker installed ($lzd_ver)"
+# Lazydocker (optional)
+if [[ "${INSTALL_LAZYDOCKER:-0}" == "1" ]]; then
+    if command -v lazydocker &>/dev/null; then
+        lzd_ver=$(lazydocker --version 2>/dev/null | grep -oP 'Version:\s*\K[\d.]+' || echo "unknown")
+        echo -e "  $PASS Lazydocker installed ($lzd_ver)"
+    else
+        echo -e "  $FAIL Lazydocker not installed"
+    fi
 else
-    echo -e "  $FAIL Lazydocker not installed"
+    echo -e "  ${YELLOW}–${RESET} Lazydocker (skipped)"
+fi
+
+# Coolify preparation (optional)
+if [[ "${COOLIFY_PREP:-0}" == "1" ]]; then
+    for port in 8000 6001 6002; do
+        if ufw status 2>/dev/null | grep -q "${port}/tcp"; then
+            echo -e "  $PASS UFW port $port allowed (Coolify)"
+        else
+            echo -e "  $FAIL UFW port $port not open (Coolify)"
+        fi
+    done
+    if grep -qE '^PermitRootLogin (yes|prohibit-password)' /etc/ssh/sshd_config 2>/dev/null && \
+       [[ -s /root/.ssh/authorized_keys ]]; then
+        echo -e "  $PASS Root SSH key login available (Coolify)"
+    else
+        echo -e "  $FAIL Root SSH key login unavailable (Coolify)"
+    fi
 fi
 
 # Dokploy (optional)
@@ -123,20 +144,35 @@ else
     echo -e "  ${YELLOW}–${RESET} Dokploy (skipped)"
 fi
 
-# Docker rootless
-if [[ -n "$DOCKER_UID" ]]; then
-    info "Running Docker hello-world test..."
-    if sudo -u "$DOCKER_USER" \
-        XDG_RUNTIME_DIR="/run/user/$DOCKER_UID" \
-        DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$DOCKER_UID/bus" \
-        docker run --rm hello-world &>/dev/null; then
-        echo -e "  $PASS Docker rootless (hello-world passed)"
-    else
-        echo -e "  $FAIL Docker rootless (hello-world failed)"
-    fi
-else
-    echo -e "  $FAIL Docker rootless (user not found)"
-fi
+# Docker
+case "${DOCKER_MODE:-rootful}" in
+    rootful)
+        check_service "Docker daemon" "docker"
+        if docker run --rm hello-world &>/dev/null; then
+            echo -e "  $PASS Docker rootful (hello-world passed)"
+        else
+            echo -e "  $FAIL Docker rootful (hello-world failed)"
+        fi
+        ;;
+    rootless)
+        if [[ -n "$DOCKER_UID" ]]; then
+            info "Running Docker hello-world test..."
+            if sudo -u "$DOCKER_USER" \
+                XDG_RUNTIME_DIR="/run/user/$DOCKER_UID" \
+                DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$DOCKER_UID/bus" \
+                docker run --rm hello-world &>/dev/null; then
+                echo -e "  $PASS Docker rootless (hello-world passed)"
+            else
+                echo -e "  $FAIL Docker rootless (hello-world failed)"
+            fi
+        else
+            echo -e "  $FAIL Docker rootless (user not found)"
+        fi
+        ;;
+    *)
+        echo -e "  ${YELLOW}–${RESET} Docker (skipped)"
+        ;;
+esac
 
 echo ""
 echo -e "${BOLD}========================================${RESET}"
@@ -148,6 +184,9 @@ echo -e "  SSH:       ${BOLD}ssh root@$SERVER_IP${RESET}"
 echo -e "  SSH:       ${BOLD}ssh $DOCKER_USER@$SERVER_IP${RESET}"
 if [[ "${INSTALL_DOKPLOY:-0}" == "1" ]]; then
     echo -e "  Dokploy:   ${BOLD}http://$SERVER_IP:3000${RESET}"
+fi
+if [[ "${COOLIFY_PREP:-0}" == "1" ]]; then
+    echo -e "  Coolify:   install it now, then open ${BOLD}http://$SERVER_IP:8000${RESET}"
 fi
 
 echo -e "${BOLD}========================================${RESET}"

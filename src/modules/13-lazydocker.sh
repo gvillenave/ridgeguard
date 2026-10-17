@@ -8,6 +8,12 @@ require_root
 
 INSTALL_DIR="/usr/local/bin"
 
+# This module is optional: skip unless INSTALL_LAZYDOCKER=1
+if [[ "${INSTALL_LAZYDOCKER:-0}" != "1" ]]; then
+    info "lazydocker installation skipped (not selected)"
+    exit 0
+fi
+
 info "Installing lazydocker..."
 
 # Determine latest release version from GitHub

@@ -212,13 +212,28 @@ sed -e 's|source "$SCRIPT_DIR/../lib/common.sh"|source "/opt/ridgeguard/lib/comm
 # shellcheck disable=SC2016
 sed -i '1a systemctl() { if [[ "$1" == "is-active" && ("$3" == "docker.service" || "$3" == "docker.socket") ]]; then return 0; fi; command systemctl "$@"; }' /tmp/12-test.sh
 set +e
-output_12="$(echo "2" | bash /tmp/12-test.sh 2>&1)"
+output_12="$(echo "2" | DOCKER_MODE=rootless bash /tmp/12-test.sh 2>&1)"
 status_12=$?
 set -e
 if [[ $status_12 -eq 0 ]] && echo "$output_12" | grep -q "Skipping Docker rootless setup"; then
     pass "12-docker-engine (skip when root-mode detected)"
 else
     fail "12-docker-engine (root-mode detection)" "did not skip with choice 2 or exited with status $status_12"
+fi
+
+# DOCKER_MODE=none skips the module
+output_12_none="$(DOCKER_MODE=none bash modules/12-docker-engine.sh 2>&1)" || true
+if echo "$output_12_none" | grep -q "Docker installation skipped"; then
+    pass "12-docker-engine (skips when DOCKER_MODE=none)"
+else
+    fail "12-docker-engine" "did not skip when DOCKER_MODE=none"
+fi
+
+# Invalid DOCKER_MODE is rejected
+if DOCKER_MODE=bogus bash modules/12-docker-engine.sh >/dev/null 2>&1; then
+    fail "12-docker-engine" "accepted invalid DOCKER_MODE"
+else
+    pass "12-docker-engine (rejects invalid DOCKER_MODE)"
 fi
 
 # Note: docker.sock cleanup behavior for module 12 is covered by unit tests.
@@ -246,6 +261,13 @@ PATH="$TMPDIR_LZD:$PATH" LAZYDOCKER_VERSION="0.0.0-test" \
     && pass "13-lazydocker (binary detection works)" \
     || fail "13-lazydocker" "binary detection failed"
 rm -rf "$TMPDIR_LZD"
+# Skip path when lazydocker is not selected
+output_lzd=$(INSTALL_LAZYDOCKER=0 bash modules/13-lazydocker.sh 2>&1)
+if echo "$output_lzd" | grep -q "skipped"; then
+    pass "13-lazydocker (skips when not selected)"
+else
+    fail "13-lazydocker" "did not skip when INSTALL_LAZYDOCKER=0"
+fi
 
 # --- Module 14: Dokploy (optional) ---
 echo "Testing module 14 (dokploy)..."
@@ -260,6 +282,13 @@ if echo "$output_dokploy" | grep -q "skipped"; then
     pass "14-dokploy (skips when not selected)"
 else
     fail "14-dokploy" "did not skip when INSTALL_DOKPLOY=0"
+fi
+
+# Dokploy refuses rootless Docker
+if INSTALL_DOKPLOY=1 DOCKER_MODE=rootless bash modules/14-dokploy.sh >/dev/null 2>&1; then
+    fail "14-dokploy" "ran with DOCKER_MODE=rootless"
+else
+    pass "14-dokploy (refuses rootless Docker)"
 fi
 
 # --- Module 15: Verify ---

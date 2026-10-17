@@ -12,6 +12,12 @@ if [[ "${INSTALL_DOKPLOY:-0}" != "1" ]]; then
     exit 0
 fi
 
+# Dokploy needs the system-wide Docker daemon (Docker Swarm)
+if [[ "${DOCKER_MODE:-rootful}" != "rootful" ]]; then
+    error "Dokploy requires rootful Docker (DOCKER_MODE=${DOCKER_MODE})"
+    exit 1
+fi
+
 info "Installing Dokploy..."
 
 # Dokploy requires ports 80, 443, and 3000

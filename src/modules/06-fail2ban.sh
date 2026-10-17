@@ -24,13 +24,20 @@ else
 [DEFAULT]
 bantime = 1h
 findtime = 10m
-maxretry = 5
+# OpenSSH 10 throttles repeat offenders itself (PerSourcePenalties) after about
+# three failures, so a higher value may never trigger.
+maxretry = 3
 
 [sshd]
 enabled = true
 port = ssh
-filter = sshd
+# Key-only servers log failed attempts as "Connection closed by authenticating
+# user ... [preauth]". Only aggressive mode matches those lines.
+filter = sshd[mode=aggressive]
 backend = systemd
+# OpenSSH 9.8+ logs from sshd-session. Ubuntu's defaults-debian.conf only
+# matches sshd, so list both.
+journalmatch = _SYSTEMD_UNIT=ssh.service + _COMM=sshd + _COMM=sshd-session
 EOF
 fi
 
