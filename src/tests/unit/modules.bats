@@ -276,7 +276,7 @@ run_rootful_install() {
         }
         systemctl() {
             echo "systemctl $*" >> "$CALLS_LOG"
-            if [[ "$1 $2 $3" == "is-active --quiet docker.service" ]]; then return $((1 - MOCK_DOCKER_ACTIVE)); fi
+            if [[ "${1:-} ${2:-} ${3:-}" == "is-active --quiet docker.service" ]]; then return $((1 - MOCK_DOCKER_ACTIVE)); fi
             return 0
         }
         id() { return 0; }
