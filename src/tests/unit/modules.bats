@@ -254,6 +254,14 @@ SCRIPT
     grep -q 'Local only' "$PROJECT_DIR/modules/09-logwatch.sh"
 }
 
+@test "Docker engine writes daemon.json before installing and restarts a running daemon" {
+    local f="$PROJECT_DIR/modules/12-docker-engine.sh" json_line install_line
+    json_line=$(grep -n 'daemon_json_created=1' "$f" | head -1 | cut -d: -f1)
+    install_line=$(grep -n 'apt_install docker-ce docker-ce-cli containerd.io docker-buildx-plugin' "$f" | head -1 | cut -d: -f1)
+    [[ "$json_line" -lt "$install_line" ]]
+    grep -q 'systemctl restart docker.service' "$f"
+}
+
 # --- setup.sh: --from flag parsing ---
 
 @test "setup.sh accepts --help without requiring root" {

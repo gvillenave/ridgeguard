@@ -89,11 +89,14 @@ setup_docker_repo() {
 install_rootful() {
     info "Installing Docker Engine in rootful (system-wide) mode..."
     setup_docker_repo
-    apt_install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
     # Rotate container logs so a chatty container cannot fill the disk.
+    # Write the file before the install so a fresh daemon starts with it.
     # Keep an existing daemon.json untouched.
-    local daemon_json="/etc/docker/daemon.json"
+    local daemon_json="/etc/docker/daemon.json" daemon_json_created=0 docker_was_active=0
+    if systemctl is-active --quiet docker.service 2>/dev/null; then
+        docker_was_active=1
+    fi
     if [[ ! -f "$daemon_json" ]]; then
         install -m 0755 -d /etc/docker
         cat > "$daemon_json" << 'JSON'
@@ -105,12 +108,22 @@ install_rootful() {
   }
 }
 JSON
+        daemon_json_created=1
         info "Wrote $daemon_json (log rotation)"
     else
         info "$daemon_json already exists, leaving it unchanged"
     fi
 
+    apt_install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
     systemctl enable --now containerd.service docker.service
+
+    # A daemon that was already running does not read the new file until restart.
+    # Existing containers keep their old log settings until recreated.
+    if [[ $daemon_json_created -eq 1 && $docker_was_active -eq 1 ]]; then
+        info "Restarting Docker to apply log rotation..."
+        systemctl restart docker.service
+    fi
 
     # Lets the docker user run docker (and lazydocker) without sudo.
     # The user already has passwordless sudo, so this grants no new privilege.
