@@ -5,6 +5,8 @@ This document provides a security review and threat model for the ridgeguard too
 1. **Standalone** — Server hardened with ridgeguard only
 2. **With Dokploy** — Server hardened with ridgeguard, then Dokploy installed as a self-hosted PaaS
 
+> **Note (Ubuntu 26.04 update):** Docker now installs in **rootful** mode by default, and Dokploy and lazydocker are optional. The analysis below was written for rootless Docker. Rootful mode loses the rootless isolation benefit (container escape can lead to host root), the same trade-off described for Dokploy. Use `--rootless` for the stronger isolation when you do not need Coolify or Dokploy. A `--coolify` run also opens ports 8000, 6001 and 6002 until a domain is set up.
+
 ---
 
 ## Table of Contents
@@ -25,7 +27,7 @@ This document provides a security review and threat model for the ridgeguard too
 
 ### What the Toolset Does
 
-The toolset applies 15 sequential modules (13 base hardening + optional Dokploy + verification) to a fresh Ubuntu 24.04 LTS+ server:
+The toolset applies 15 sequential modules (13 base hardening + optional Dokploy + verification) to a fresh Ubuntu 26.04 LTS+ server:
 
 | Module | Control |
 |--------|---------|
@@ -40,8 +42,8 @@ The toolset applies 15 sequential modules (13 base hardening + optional Dokploy 
 | 09 | Logwatch + auditd monitoring |
 | 10 | SSH service restart |
 | 11 | Docker user creation with sudo |
-| 12 | Docker Engine in rootless mode |
-| 13 | Lazydocker terminal UI |
+| 12 | Docker Engine (rootful default, rootless optional) |
+| 13 | Lazydocker terminal UI (optional) |
 | 14 | Dokploy self-hosted PaaS (optional) |
 | 15 | Verification report |
 
@@ -171,7 +173,7 @@ The DOCKER-USER iptables chain rules work correctly with rootless Docker. Howeve
 
 ### Module 06 — Fail2ban
 
-**Finding: LOW — maxretry=5 is permissive**
+**Finding: LOW — maxretry was 5 (now 3)**
 
 Five failed SSH attempts before a ban allows a moderate brute-force window. CIS recommends maxretry=3. The 1-hour ban duration is reasonable.
 
@@ -374,7 +376,7 @@ Internet
 | **P1** | Configure remote syslog or log forwarding | S3 |
 | **P2** | Add fail2ban jails for HTTP auth failures (when web services deployed) | S7 |
 | **P2** | Install AIDE or similar file integrity monitoring | S4 |
-| **P2** | Reduce fail2ban `maxretry` from 5 to 3 | S5 |
+| **P2** | Reduce fail2ban `maxretry` from 5 to 3 (done) | S5 |
 | **P3** | Add auditd rules for cron, kernel modules, network config changes | S3 |
 | **P3** | Consider disabling IPv6 if unused | S7 |
 

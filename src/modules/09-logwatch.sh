@@ -10,7 +10,11 @@ info "Setting up logwatch and auditd..."
 
 # Install logwatch
 if ! command_exists logwatch; then
-    apt_install logwatch
+    # logwatch pulls in postfix. Bind it to loopback so it does not open
+    # port 25 to the network.
+    echo "postfix postfix/main_mailer_type select Local only" | debconf-set-selections
+    echo "postfix postfix/mailname string $(hostname -f 2>/dev/null || hostname)" | debconf-set-selections
+    DEBIAN_FRONTEND=noninteractive apt_install logwatch
 fi
 
 # Configure logwatch

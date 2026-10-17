@@ -1,6 +1,6 @@
 # RidgeGuard
 
-Automated toolset for bootstrapping a fresh Ubuntu server with security hardening and Docker in rootless mode.
+Automated toolset for bootstrapping a fresh Ubuntu 26.04 server with security hardening and Docker (rootful by default, rootless optional). It prepares the server for a PaaS manager such as Coolify.
 
 ## What It Does
 
@@ -14,17 +14,17 @@ Automated toolset for bootstrapping a fresh Ubuntu server with security hardenin
 | 06 | fail2ban | Installs fail2ban with SSH jail protection |
 | 07 | sysctl-hardening | Hardens kernel network parameters (SYN cookies, anti-spoofing, etc.) |
 | 08 | unattended-upgrades | Enables automatic Ubuntu security updates |
-| 09 | logwatch | Installs logwatch and auditd for log monitoring |
+| 09 | logwatch | Installs logwatch (postfix bound to loopback) and auditd for log monitoring |
 | 10 | ssh-restart | Restarts the SSH service |
 | 11 | docker-user | Creates a `docker` user with sudo privileges |
-| 12 | docker-engine | Installs Docker Engine in rootless mode (detects existing root-mode) |
-| 13 | lazydocker | Installs lazydocker for terminal-based container management |
+| 12 | docker-engine | Installs Docker Engine in rootful (default) or rootless mode, or skips it |
+| 13 | lazydocker | *(optional)* Installs lazydocker for terminal-based container management |
 | 14 | dokploy | *(optional)* Installs Dokploy self-hosted PaaS |
 | 15 | verify | Checks all services and prints a status report |
 
 ## Prerequisites
 
-- Fresh Ubuntu 24.04 LTS+ server
+- Fresh Ubuntu 26.04 LTS (or later) server. Other releases are refused unless `RIDGEGUARD_ALLOW_UNSUPPORTED_OS=1` is set.
 - Root access via SSH
 - Active SSH connection
 
@@ -53,12 +53,46 @@ sudo bash setup.sh
 sudo bash setup.sh
 ```
 
-You will be prompted whether to install Dokploy (a self-hosted PaaS). To skip the prompt:
+The default setup installs rootful Docker. The script asks whether to install the optional tools (Dokploy, lazydocker). Both default to "no". Without a TTY, both are skipped. Flags override the prompts:
 
 ```bash
-sudo bash setup.sh --dokploy      # include Dokploy
-sudo bash setup.sh --no-dokploy   # skip Dokploy
+sudo bash setup.sh --dokploy --lazydocker     # include both optional tools
+sudo bash setup.sh --no-dokploy --no-lazydocker
 ```
+
+### Prepare a server for Coolify
+
+```bash
+sudo bash setup.sh --coolify
+```
+
+Then install Coolify with its official installer. `--coolify` does this:
+
+- Forces rootful Docker (Coolify does not support rootless Docker).
+- Opens ports 8000, 6001 and 6002 (dashboard, realtime, terminal) in UFW.
+- Keeps root SSH login with keys only, which Coolify uses to manage the server.
+- Cannot be combined with `--dokploy`.
+
+After you set a domain for Coolify, close the extra ports:
+
+```bash
+sudo ufw delete allow 8000/tcp
+sudo ufw delete allow 6001/tcp
+sudo ufw delete allow 6002/tcp
+sudo ufw route delete allow proto tcp from any to any port 8080
+sudo ufw route delete allow proto tcp from any to any port 6001
+sudo ufw route delete allow proto tcp from any to any port 6002
+```
+
+### Docker modes
+
+| Flag | Mode | Notes |
+|------|------|-------|
+| *(default)*, `--rootful` | Rootful | System-wide daemon. Needed for Coolify and Dokploy. |
+| `--rootless` | Rootless | Daemon runs as the `docker` user. Not compatible with Coolify or Dokploy. |
+| `--no-docker` | None | Skip Docker. Hardening only. |
+
+You can also set `DOCKER_MODE=rootful|rootless|none` in the environment.
 
 ## Resume From a Step
 
@@ -90,8 +124,8 @@ sudo bash modules/04-ufw-setup.sh
 - Root login: allowed (key-only)
 
 **Fail2ban:**
-- SSH jail with 1h ban, 5 max retries in 10m window
-- Uses systemd backend
+- SSH jail with 1h ban, 3 max retries in 10m window
+- Uses systemd backend, aggressive filter mode, and matches the `sshd-session` process (OpenSSH 9.8+), so key-only failures are counted
 
 **Kernel (sysctl):**
 - SYN flood protection enabled
@@ -100,15 +134,24 @@ sudo bash modules/04-ufw-setup.sh
 - Reverse path filtering enabled
 - Martian packet logging enabled
 
-**Docker:**
-- Installed in rootless mode under the `docker` user
+**Docker (rootful, default):**
+- System-wide Docker Engine from Docker's official apt repository
+- Container log rotation in `/etc/docker/daemon.json` (an existing file is not changed)
+- The `docker` user joins the `docker` group
+- UFW routes ports 80 and 443 to containers, so a reverse proxy (Traefik, Caddy) works
+
+**Docker (rootless, `--rootless`):**
+- Installed under the `docker` user
 - System Docker daemon disabled
 - Starts automatically on boot via linger
-- lazydocker installed for terminal-based container management
 - If Docker is already installed in root mode, prompts to reinstall in rootless mode or skip
+
+**lazydocker (optional):**
+- Terminal UI for Docker, installed only on request
 
 **Dokploy (optional):**
 - Self-hosted PaaS (alternative to Heroku/Vercel/Netlify)
+- Needs rootful Docker. Setup refuses `--dokploy` with `--rootless`
 - Runs on Docker Swarm, deployed via official install script
 - Dashboard accessible on port 3000
 - UFW automatically opens port 3000 when enabled
@@ -120,13 +163,13 @@ SSH into the server as the docker user:
 ssh docker@your-server-ip
 ```
 
-Run Docker containers (no sudo needed):
+Run Docker containers (no sudo needed in rootless mode; in rootful mode the `docker` user is in the `docker` group):
 ```bash
 docker run --rm hello-world
 docker compose up -d
 ```
 
-To expose a Docker container port through UFW:
+Docker bypasses normal UFW input rules for published ports. Ridgeguard blocks inbound traffic to containers by default. To expose a container port, match the port inside the container:
 ```bash
 sudo ufw route allow proto tcp from any to any port 8080
 ```
@@ -172,7 +215,7 @@ DOKPLOY_ENABLED=1 docker compose up --build --abort-on-container-exit --exit-cod
 
 The pentest suite uses two containers (attacker + target) connected via a Docker network:
 
-- **Target**: systemd-enabled Ubuntu with all hardening modules applied
+- **Target**: systemd-enabled Ubuntu 26.04 with all hardening modules applied (rootful Docker routing rules, no Docker daemon)
 - **Attacker**: Probes the target with nmap, sshpass, and SSH to verify hardening works
 
 Test categories:

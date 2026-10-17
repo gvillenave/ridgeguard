@@ -219,6 +219,41 @@ SCRIPT
     [[ "$rm_line" -gt "$disable_line" ]]
 }
 
+@test "Docker engine module supports rootful, rootless and none modes" {
+    grep -q 'install_rootful' "$PROJECT_DIR/modules/12-docker-engine.sh"
+    grep -q 'install_rootless' "$PROJECT_DIR/modules/12-docker-engine.sh"
+    grep -q 'DOCKER_MODE=none' "$PROJECT_DIR/modules/12-docker-engine.sh"
+}
+
+@test "Docker engine rootful mode does not disable the system daemon" {
+    # The disable call must live inside install_rootless only
+    local fn_line disable_line
+    fn_line=$(grep -n '^install_rootless()' "$PROJECT_DIR/modules/12-docker-engine.sh" | cut -d: -f1)
+    disable_line=$(grep -n 'systemctl disable --now docker.service' "$PROJECT_DIR/modules/12-docker-engine.sh" | head -1 | cut -d: -f1)
+    [[ "$disable_line" -gt "$fn_line" ]]
+}
+
+@test "lazydocker module skips unless INSTALL_LAZYDOCKER=1" {
+    grep -q 'INSTALL_LAZYDOCKER:-0' "$PROJECT_DIR/modules/13-lazydocker.sh"
+}
+
+@test "dokploy module requires rootful Docker" {
+    grep -q 'DOCKER_MODE:-rootful' "$PROJECT_DIR/modules/14-dokploy.sh"
+}
+
+@test "ufw-docker module allows routed 80/443 in rootful mode" {
+    grep -q 'ufw route allow proto tcp' "$PROJECT_DIR/modules/05-ufw-docker-rules.sh"
+}
+
+@test "fail2ban jail matches sshd-session logs and key-only failures" {
+    grep -q '_COMM=sshd-session' "$PROJECT_DIR/modules/06-fail2ban.sh"
+    grep -q 'filter = sshd\[mode=aggressive\]' "$PROJECT_DIR/modules/06-fail2ban.sh"
+}
+
+@test "logwatch module keeps postfix on loopback" {
+    grep -q 'Local only' "$PROJECT_DIR/modules/09-logwatch.sh"
+}
+
 # --- setup.sh: --from flag parsing ---
 
 @test "setup.sh accepts --help without requiring root" {
@@ -243,4 +278,19 @@ SCRIPT
     run bash "$PROJECT_DIR/setup.sh" --from
     [[ $status -ne 0 ]]
     [[ "$output" == *"requires a value"* ]]
+}
+
+@test "setup.sh --help documents Docker mode and optional tools" {
+    run bash "$PROJECT_DIR/setup.sh" --help
+    [[ $status -eq 0 ]]
+    [[ "$output" == *"--docker-mode"* ]]
+    [[ "$output" == *"--coolify"* ]]
+    [[ "$output" == *"--lazydocker"* ]]
+    [[ "$output" == *"--dokploy"* ]]
+}
+
+@test "setup.sh rejects an invalid Docker mode" {
+    run bash "$PROJECT_DIR/setup.sh" --docker-mode bogus
+    [[ $status -ne 0 ]]
+    [[ "$output" == *"Invalid Docker mode"* ]]
 }

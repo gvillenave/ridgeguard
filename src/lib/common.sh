@@ -10,6 +10,13 @@ export PROJECT_ROOT
 DOCKER_USER="${DOCKER_USER:-docker}"
 export DOCKER_USER
 
+# Docker mode: rootful (default, required by Coolify), rootless, or none
+DOCKER_MODE="${DOCKER_MODE:-rootful}"
+export DOCKER_MODE
+
+# Minimum supported Ubuntu release
+MIN_UBUNTU_VERSION="26.04"
+
 # Color support (respects NO_COLOR convention)
 if [[ -t 1 ]] && [[ -z "${NO_COLOR:-}" ]]; then
     RED='\033[0;31m'
@@ -37,6 +44,44 @@ require_root() {
         error "This script must be run as root"
         exit 1
     fi
+}
+
+# Exit unless the host runs a supported Ubuntu release.
+# Set RIDGEGUARD_ALLOW_UNSUPPORTED_OS=1 to continue anyway.
+check_os() {
+    local os_release="${1:-/etc/os-release}" id="" version=""
+    if [[ -r "$os_release" ]]; then
+        id="$(sed -n 's/^ID=//p' "$os_release" | head -1 | tr -d '"')"
+        version="$(sed -n 's/^VERSION_ID=//p' "$os_release" | head -1 | tr -d '"')"
+    fi
+    if [[ "$id" == "ubuntu" ]] && \
+       [[ "$(printf '%s\n%s\n' "$MIN_UBUNTU_VERSION" "$version" | sort -V | head -1)" == "$MIN_UBUNTU_VERSION" ]]; then
+        return 0
+    fi
+    if [[ "${RIDGEGUARD_ALLOW_UNSUPPORTED_OS:-0}" == "1" ]]; then
+        warn "Unsupported OS (${id:-unknown} ${version:-unknown}); continuing because RIDGEGUARD_ALLOW_UNSUPPORTED_OS=1"
+        return 0
+    fi
+    error "Unsupported OS (${id:-unknown} ${version:-unknown}). Ridgeguard needs Ubuntu ${MIN_UBUNTU_VERSION} or later."
+    error "Set RIDGEGUARD_ALLOW_UNSUPPORTED_OS=1 to override."
+    return 1
+}
+
+# Ask a yes/no question. Default is "no". Without a TTY, returns "no".
+# Usage: ask_yes_no "Question?"
+ask_yes_no() {
+    local prompt="$1" answer
+    if ! (: < /dev/tty) 2>/dev/null; then
+        return 1
+    fi
+    while true; do
+        read -r -p "$prompt [y/N]: " answer < /dev/tty
+        case "${answer,,}" in
+            y|yes) return 0 ;;
+            n|no|"") return 1 ;;
+            *) echo "Please enter y or n" >&2 ;;
+        esac
+    done
 }
 
 command_exists() {

@@ -23,6 +23,16 @@ ufw allow 80/tcp
 info "Allowing port 443/tcp (HTTPS)..."
 ufw allow 443/tcp
 
+# Coolify serves its dashboard on 8000 and its realtime/terminal services on
+# 6001 and 6002 until a domain is set up. Close them again afterwards:
+#   ufw delete allow 8000/tcp (and 6001, 6002)
+if [[ "${COOLIFY_PREP:-0}" == "1" ]]; then
+    for port in 8000 6001 6002; do
+        info "Allowing port ${port}/tcp (Coolify)..."
+        ufw allow "${port}/tcp"
+    done
+fi
+
 info "Setting default policies..."
 ufw default deny incoming
 ufw default allow outgoing
