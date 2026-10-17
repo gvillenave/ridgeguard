@@ -4,21 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"
 
-require_root
-
 DOCKER_MODE="${DOCKER_MODE:-rootful}"
-
-case "$DOCKER_MODE" in
-    none)
-        info "Docker installation skipped (DOCKER_MODE=none)"
-        exit 0
-        ;;
-    rootful|rootless) ;;
-    *)
-        error "Invalid DOCKER_MODE '$DOCKER_MODE' (expected rootful, rootless, or none)"
-        exit 1
-        ;;
-esac
+DOCKER_DAEMON_JSON="${DOCKER_DAEMON_JSON:-/etc/docker/daemon.json}"
 
 setup_docker_repo() {
     # Install prerequisites
@@ -93,12 +80,12 @@ install_rootful() {
     # Rotate container logs so a chatty container cannot fill the disk.
     # Write the file before the install so a fresh daemon starts with it.
     # Keep an existing daemon.json untouched.
-    local daemon_json="/etc/docker/daemon.json" daemon_json_created=0 docker_was_active=0
+    local daemon_json="$DOCKER_DAEMON_JSON" daemon_json_created=0 docker_was_active=0
     if systemctl is-active --quiet docker.service 2>/dev/null; then
         docker_was_active=1
     fi
     if [[ ! -f "$daemon_json" ]]; then
-        install -m 0755 -d /etc/docker
+        install -m 0755 -d "$(dirname "$daemon_json")"
         cat > "$daemon_json" << 'JSON'
 {
   "log-driver": "json-file",
@@ -221,8 +208,28 @@ install_rootless() {
     success "Docker Engine installed in rootless mode for user '$DOCKER_USER'"
 }
 
-if [[ "$DOCKER_MODE" == "rootful" ]]; then
-    install_rootful
-else
-    install_rootless
+main() {
+    require_root
+
+    case "$DOCKER_MODE" in
+        none)
+            info "Docker installation skipped (DOCKER_MODE=none)"
+            exit 0
+            ;;
+        rootful)
+            install_rootful
+            ;;
+        rootless)
+            install_rootless
+            ;;
+        *)
+            error "Invalid DOCKER_MODE '$DOCKER_MODE' (expected rootful, rootless, or none)"
+            exit 1
+            ;;
+    esac
+}
+
+# Run only when executed; tests source this file to call the functions.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
 fi

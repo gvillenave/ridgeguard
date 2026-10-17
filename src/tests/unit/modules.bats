@@ -254,12 +254,77 @@ SCRIPT
     grep -q 'Local only' "$PROJECT_DIR/modules/09-logwatch.sh"
 }
 
-@test "Docker engine writes daemon.json before installing and restarts a running daemon" {
-    local f="$PROJECT_DIR/modules/12-docker-engine.sh" json_line install_line
-    json_line=$(grep -n 'daemon_json_created=1' "$f" | head -1 | cut -d: -f1)
-    install_line=$(grep -n 'apt_install docker-ce docker-ce-cli containerd.io docker-buildx-plugin' "$f" | head -1 | cut -d: -f1)
-    [[ "$json_line" -lt "$install_line" ]]
-    grep -q 'systemctl restart docker.service' "$f"
+# Runs install_rootful from the real module with the system commands mocked.
+# Args: $1 = docker active before install (0|1), $2 = existing daemon.json content (optional)
+# Writes calls to $TEST_TMP/calls.log; daemon.json lives in $TEST_TMP/docker/.
+run_rootful_install() {
+    local active="$1" existing="${2:-}"
+    export DOCKER_DAEMON_JSON="$TEST_TMP/docker/daemon.json"
+    export CALLS_LOG="$TEST_TMP/calls.log"
+    : > "$CALLS_LOG"
+    mkdir -p "$TEST_TMP/docker"
+    rm -f "$DOCKER_DAEMON_JSON"
+    [[ -n "$existing" ]] && printf '%s' "$existing" > "$DOCKER_DAEMON_JSON"
+    export MOCK_DOCKER_ACTIVE="$active"
+    run bash -c '
+        export NO_COLOR=1
+        source "$1"
+        setup_docker_repo() { echo "setup_docker_repo" >> "$CALLS_LOG"; }
+        apt_install() {
+            if [[ -f "$DOCKER_DAEMON_JSON" ]]; then echo "json_present_at_install" >> "$CALLS_LOG"; fi
+            echo "apt_install $*" >> "$CALLS_LOG"
+        }
+        systemctl() {
+            echo "systemctl $*" >> "$CALLS_LOG"
+            if [[ "$1 $2 $3" == "is-active --quiet docker.service" ]]; then return $((1 - MOCK_DOCKER_ACTIVE)); fi
+            return 0
+        }
+        id() { return 0; }
+        usermod() { echo "usermod $*" >> "$CALLS_LOG"; }
+        install_rootful
+    ' -- "$PROJECT_DIR/modules/12-docker-engine.sh"
+}
+
+@test "rootful install on a fresh host installs packages, writes log config first, and does not restart" {
+    run_rootful_install 0
+    [[ $status -eq 0 ]]
+    grep -qx "apt_install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin" "$CALLS_LOG"
+    # daemon.json must exist before the packages start the daemon
+    grep -qx "json_present_at_install" "$CALLS_LOG"
+    grep -q '"max-size": "10m"' "$DOCKER_DAEMON_JSON"
+    grep -qx "systemctl enable --now containerd.service docker.service" "$CALLS_LOG"
+    grep -qx "usermod -aG docker docker" "$CALLS_LOG"
+    ! grep -q "systemctl restart" "$CALLS_LOG"
+}
+
+@test "rootful install restarts a running daemon after writing a new log config" {
+    run_rootful_install 1
+    [[ $status -eq 0 ]]
+    grep -q '"max-size": "10m"' "$DOCKER_DAEMON_JSON"
+    grep -qx "systemctl restart docker.service" "$CALLS_LOG"
+    # the restart must come after the daemon is enabled
+    local enable_line restart_line
+    enable_line=$(grep -n "systemctl enable --now" "$CALLS_LOG" | cut -d: -f1)
+    restart_line=$(grep -n "systemctl restart" "$CALLS_LOG" | cut -d: -f1)
+    [[ "$restart_line" -gt "$enable_line" ]]
+}
+
+@test "rootful install keeps an existing daemon.json and does not restart" {
+    run_rootful_install 1 '{"debug": true}'
+    [[ $status -eq 0 ]]
+    [[ "$(cat "$DOCKER_DAEMON_JSON")" == '{"debug": true}' ]]
+    [[ "$output" == *"leaving it unchanged"* ]]
+    ! grep -q "systemctl restart" "$CALLS_LOG"
+    grep -qx "systemctl enable --now containerd.service docker.service" "$CALLS_LOG"
+}
+
+@test "module 12 main rejects an invalid DOCKER_MODE and skips for none" {
+    run bash -c 'export NO_COLOR=1; source "$1"; require_root() { :; }; DOCKER_MODE=bogus; main' -- "$PROJECT_DIR/modules/12-docker-engine.sh"
+    [[ $status -ne 0 ]]
+    [[ "$output" == *"Invalid DOCKER_MODE"* ]]
+    run bash -c 'export NO_COLOR=1; source "$1"; require_root() { :; }; DOCKER_MODE=none; main' -- "$PROJECT_DIR/modules/12-docker-engine.sh"
+    [[ $status -eq 0 ]]
+    [[ "$output" == *"skipped"* ]]
 }
 
 # --- setup.sh: --from flag parsing ---
